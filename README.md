@@ -1,6 +1,6 @@
-# PCAP to Image & DROCC Anomaly Detection
+# Data to Image & DROCC Anomaly Detection
 
-Bu proje, ağ paketlerini (PCAP dosyaları) görüntülere dönüştürüp DROCC (Deep Robust One-Class Classification) algoritması ile anomali tespiti yapan bir makine öğrenmesi sistemidir.
+Bu proje, ağ paketlerini (PCAP, CSV) görüntülere dönüştürüp DROCC (Deep Robust One-Class Classification) algoritması ile anomali tespiti yapan bir makine öğrenmesi sistemidir.
 
 ## Özellikler
 
