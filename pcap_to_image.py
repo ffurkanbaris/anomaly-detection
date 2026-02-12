@@ -130,7 +130,7 @@ def main():
     
     parser.add_argument("--side", type=int, default=32)
     parser.add_argument("--window_size", type=int, default=16)
-    parser.add_argument("--stride", type=int, default=8)
+    parser.add_argument("--stride", type=int, default=32)
     parser.add_argument("--max_packets", type=int, default=None)
 
     args = parser.parse_args()
@@ -169,11 +169,8 @@ def main():
         save_images(X_test, test_dir, prefix="test_norm")
         
     elif args.dataset_type == 'attack':
-        # --- ATTACK MODU (Hepsi Tek Klasöre) ---
+        # --- ATTACK MODU 
         print("\n[MOD] Saldırı Verisi İşleme (Bölme Yok, Hepsi Kaydediliyor)")
-        
-        # Hedef: pcap_images/Attacks (Test amaçlı kullanılacağı için)
-        # İsterseniz test/attack altına da koyabilirsiniz ama isteğiniz Attacks klasörüydü.
         attack_dir = os.path.join("pcap_images", "Attacks")
         
         print(f"Tüm Veri: {len(X)} adet -> {attack_dir}")

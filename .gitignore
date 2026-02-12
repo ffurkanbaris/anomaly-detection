@@ -39,17 +39,20 @@ wheels/
 *.png
 
 
-# Generated images (isteğe bağlı - eğer çok fazla görüntü varsa)
+# Generated images
 pcap_images/
-data/
-datasets/
 # Model checkpoints
 *.pth
 *.pt
 *.ckpt
 
-# Data directories (isteğe bağlı)
-# data/
+# Data directories
+data/
+datasets/
+IOT/
+ICUDatasetProcessed/
+pcap/
+images/
 
 # OS
 .DS_Store
