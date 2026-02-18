@@ -1,53 +1,53 @@
 # Data to Image & DROCC Anomaly Detection
 
-Bu proje, ağ paketlerini (PCAP, CSV) görüntülere dönüştürüp DROCC (Deep Robust One-Class Classification) algoritması ile anomali tespiti yapan bir makine öğrenmesi sistemidir.
+This project is a machine learning system that converts network packets (PCAP files, CSV data) into images and performs anomaly detection using the DROCC (Deep Robust One-Class Classification) algorithm.
 
-## Özellikler
+## Features
 
-- PCAP dosyalarını grayscale görüntülere dönüştürme
-- LeNet-5 tabanlı DROCC modeli ile one-class learning
-- Anomali tespiti için adversarial training
+- Converting PCAP files to grayscale images
+- One-class learning with LeNet-5 based DROCC model
+- Adversarial training for anomaly detection
 
-## Kurulum
+## Installation
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Kullanım
+## Usage
 
-### 1. PCAP Dosyalarını Görüntülere Dönüştürme
+### 1. Converting PCAP Files to Images
 
 ```bash
 python pcap_to_image.py
 ```
 
-Bu script, PCAP dosyalarını PNG görüntülerine dönüştürür ve `pcap_images/` klasörüne kaydeder.
+This script converts PCAP files to PNG images and saves them to the `pcap_images/` folder.
 
-### 2. Model Eğitimi
+### 2. Model Training
 
 ```bash
 python train_drocc_packets.py
 ```
 
-Model sadece normal paketlerle eğitilir ve anomali tespiti için kullanılır.
+The model is trained only on normal packets and is used for anomaly detection.
 
-## Klasör Yapısı
+## Folder Structure
 
 ```
 .
-├── pcap_to_image.py          # PCAP -> Image dönüştürücü
-├── train_drocc_packets.py    # DROCC model eğitimi
-├── requirements.txt          # Python bağımlılıkları
-├── pcap_images/              # Üretilen görüntüler
-│   ├── Normal/              # Normal paket görüntüleri
-│   └── Attack/              # Saldırı paket görüntüleri (test için)
-└── IP-Based/                # PCAP dosyaları
+├── pcap_to_image.py          # PCAP -> Image converter
+├── train_drocc_packets.py    # DROCC model training
+├── requirements.txt          # Python dependencies
+├── pcap_images/              # Generated images
+│   ├── Normal/              # Normal packet images
+│   └── Attack/              # Attack packet images (for testing)
+└── IP-Based/                # PCAP files
     ├── Normal/
     └── Malicious/
 ```
 
-## Gereksinimler
+## Requirements
 
 - Python 3.7+
 - PyTorch
@@ -56,7 +56,6 @@ Model sadece normal paketlerle eğitilir ve anomali tespiti için kullanılır.
 - Pillow (PIL)
 - torchvision
 
-## Lisans
+## License
 
 MIT
-

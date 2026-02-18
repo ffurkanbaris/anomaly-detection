@@ -45,9 +45,9 @@ class PacketImageDataset(Dataset):
         except:
             return torch.zeros((1, self.img_size, self.img_size)), self.label
 
-# ============================
-# 2) Architecture with Bottleneck
-# ============================
+
+# 2) Architecture 
+
 class LeNet5DROCC(nn.Module):
     def __init__(self, bottleneck_dim=32):
         super().__init__()
