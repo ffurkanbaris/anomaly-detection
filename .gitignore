@@ -53,6 +53,7 @@ IOT/
 ICUDatasetProcessed/
 pcap/
 images/
+venv*/
 
 # OS
 .DS_Store

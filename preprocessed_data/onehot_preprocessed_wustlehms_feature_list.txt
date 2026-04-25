@@ -1,0 +1,38 @@
+Feature List (excluding target column):
+==================================================
+ 1. SrcBytes
+ 2. DstBytes
+ 3. SrcLoad
+ 4. DstLoad
+ 5. SIntPkt
+ 6. DIntPkt
+ 7. SIntPktAct
+ 8. SrcJitter
+ 9. DstJitter
+10. sMaxPktSz
+11. dMaxPktSz
+12. sMinPktSz
+13. Dur
+14. TotPkts
+15. TotBytes
+16. Load
+17. Loss
+18. pLoss
+19. pSrcLoss
+20. pDstLoss
+21. Rate
+22. Temp
+23. SpO2
+24. Pulse_Rate
+25. SYS
+26. DIA
+27. Heart_rate
+28. Resp_Rate
+29. ST
+30. Flgs_M
+31. Flgs_M *
+32. Flgs_M d
+33. Flgs_MR
+34. Flgs_e
+35. Flgs_e s
+36. Flgs_eR
