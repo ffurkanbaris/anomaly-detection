@@ -13,8 +13,7 @@ import glob
 from sklearn.metrics import (
     roc_auc_score, roc_curve,
     classification_report, confusion_matrix,
-    accuracy_score,
-    precision_recall_fscore_support,
+    accuracy_score, f1_score, precision_score, recall_score
 )
 from trainer.drocclftrainer import DROCCLFTrainer, cal_precision_recall
 
@@ -35,7 +34,7 @@ class DROCCModel(nn.Module):
         self.fc2 = nn.Linear(self.rep_dim, 1, bias=False)
 
     def forward(self, x):
-        x = x.view(x.shape[0], 1, 6, 6)
+        x = x.view(x.shape[0], 1, 7, 7)
         x = self.conv1(x)
         x = self.pool(F.leaky_relu(self.bn1(x)))
         x = self.conv2(x)
@@ -131,6 +130,49 @@ def get_close_negs(test_loader, device):
     
     return TensorDatasetWrapper(close_neg_data, close_neg_labels)
 
+
+def calculate_and_print_all_metrics(pos_scores, far_neg_scores, close_neg_scores, fpr_threshold=0.05):
+    
+    all_neg_scores = np.concatenate((far_neg_scores, close_neg_scores), axis=0)
+    
+    # Gerçek Etiketler (Normal = 1, Attack = 0) ve Skorları Birleştirme
+    y_true = np.concatenate([np.ones_like(pos_scores), np.zeros_like(all_neg_scores)])
+    y_scores = np.concatenate([pos_scores, all_neg_scores])
+    
+    # 1. Eşikten Bağımsız Metrik: ROC-AUC Hesaplama
+    auc_score = roc_auc_score(y_true, y_scores)
+    
+    # 2. Threshold Belirleme (Hedeflenen FPR'ye göre eşik noktası kesimi)
+    num_neg = all_neg_scores.shape[0]
+    idx = int((1 - fpr_threshold) * num_neg)
+    sorted_neg = np.sort(all_neg_scores)
+    thresh = sorted_neg[idx] if num_neg > 0 else 0.5
+    
+    # Eşiğe Göre Sınıflandırma Kararı (Eşikten büyükse 1, küçükse 0)
+    y_pred = (y_scores > thresh).astype(int)
+    
+    # Diğer Metrikler
+    acc = accuracy_score(y_true, y_pred)
+    prec = precision_score(y_true, y_pred, zero_division=0)
+    rec = recall_score(y_true, y_pred, zero_division=0)
+    f1 = f1_score(y_true, y_pred, zero_division=0)
+    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
+    
+    print("\n" + "="*50)
+    print("="*50)
+    print(f"   ➤ ROC-AUC Skoru : {auc_score:.4f} (1.0 = Kusursuz, 0.5 = Rastgele)")
+    print("-" * 50)
+    print(f"🔹 Seçilen Eşik (@FPR {fpr_threshold*100}% Threshold = {thresh:.4f}) İçin:")
+    print(f"   ➤ Accuracy (Doğruluk) : {acc:.4f}")
+    print(f"   ➤ Precision (Kesinlik): {prec:.4f}")
+    print(f"   ➤ Recall (Duyarlılık) : {rec:.4f}")
+    print(f"   ➤ F1-Score            : {f1:.4f}")
+    print("-" * 50)
+    print("🔹 Confusion Matrix (Karmaşıklık Matrisi):")
+    print(f"   [ TN: {cm[0,0]:<5} | FP: {cm[0,1]:<5} ] -> Saldırı (0)")
+    print(f"   [ FN: {cm[1,0]:<5} | TP: {cm[1,1]:<5} ] -> Normal (1)")
+    print("="*50 + "\n")
+
 def plot_training_metrics(history, save_dir):
     """Eğitim sonu loss ve metrik grafiklerini çizer."""
     epochs = range(1, len(history['ce_loss']) + 1)
@@ -225,13 +267,13 @@ def plot_evaluation_results(pos_scores, far_neg_scores, close_neg_scores, save_d
 # ---------------------------------------------------------
 def main():
     transform = transforms.Compose([
-        transforms.Resize((6, 6)),
+        transforms.Resize((7, 7)),
         transforms.ToTensor()
     ])
 
-    train_normal_dir = "wustlehms_images/train/normal"
-    test_normal_dir = "wustlehms_images/test/normal"
-    test_attack_dir = "wustlehms_images/test/attack"
+    train_normal_dir = "network_traffic_7x7_images/train/normal"
+    test_normal_dir = "network_traffic_7x7_images/test/normal"
+    test_attack_dir = "network_traffic_7x7_images/test/attack"
 
     train_dataset = CustomImageDataset(normal_dir=train_normal_dir, transform=transform)
     test_dataset = CustomImageDataset(normal_dir=test_normal_dir, attack_dir=test_attack_dir, transform=transform)
@@ -268,6 +310,8 @@ def main():
         print("\nTest seti üzerinde değerlendirme ve Skor Dağılımı yapılıyor...")
         _, pos_scores, far_neg_scores = trainer.test(test_loader, get_auc=False)
         _, _, close_neg_scores = trainer.test(closeneg_test_loader, get_auc=False)
+
+        calculate_and_print_all_metrics(pos_scores, far_neg_scores, close_neg_scores, fpr_threshold=0.05)
         plot_evaluation_results(pos_scores, far_neg_scores, close_neg_scores, args.model_dir, fpr_threshold=0.05)
 
     else:
@@ -280,6 +324,8 @@ def main():
             
         _, pos_scores, far_neg_scores = trainer.test(test_loader, get_auc=False)
         _, _, close_neg_scores = trainer.test(closeneg_test_loader, get_auc=False)
+
+        calculate_and_print_all_metrics(pos_scores, far_neg_scores, close_neg_scores, fpr_threshold=0.05)
         
         precision_fpr03, recall_fpr03 = cal_precision_recall(pos_scores, far_neg_scores, close_neg_scores, 0.03)
         precision_fpr05, recall_fpr05 = cal_precision_recall(pos_scores, far_neg_scores, close_neg_scores, 0.05)
@@ -291,12 +337,16 @@ def main():
         plot_evaluation_results(pos_scores, far_neg_scores, close_neg_scores, args.model_dir, fpr_threshold=0.05)
 
 if __name__ == '__main__':
+    """"wustlehms_images --> r = 0.1
+        wustlehms_images_onehot --> r = 0.1
+    
+    """
     torch.set_printoptions(precision=5)
     parser = argparse.ArgumentParser(description='PyTorch DROCC Training with Custom PNG Data')
     parser.add_argument('--normal_class', type=int, default=0, metavar='N', help='Normal class index')
     parser.add_argument('--batch_size', type=int, default=128, metavar='N', help='batch size for training')
-    parser.add_argument('--epochs', type=int, default=100, metavar='N', help='number of epochs to train')
-    parser.add_argument('-oce', '--only_ce_epochs', type=int, default=50, metavar='N', help='number of epochs to train with only CE loss')
+    parser.add_argument('--epochs', type=int, default=10, metavar='N', help='number of epochs to train')
+    parser.add_argument('-oce', '--only_ce_epochs', type=int, default=3, metavar='N', help='number of epochs to train with only CE loss')
     parser.add_argument('--ascent_num_steps', type=int, default=50, metavar='N', help='Number of gradient ascent steps')                        
     parser.add_argument('--hd', type=int, default=128, metavar='N', help='Num hidden nodes for LSTM model')
     parser.add_argument('--lr', type=float, default=0.001, metavar='LR', help='learning rate')
@@ -304,7 +354,7 @@ if __name__ == '__main__':
     parser.add_argument('--mom', type=float, default=0.99, metavar='M', help='momentum')
     parser.add_argument('--model_dir', default='log', help='path where to save checkpoint')
     parser.add_argument('--one_class_adv', type=int, default=1, metavar='N', help='adv loss to be used or not, 1:use 0:not use(only CE)')
-    parser.add_argument('--radius', type=float, default=0.2, metavar='N', help='radius corresponding to the definition of set N_i(r)')
+    parser.add_argument('--radius', type=float, default=0.05, metavar='N', help='radius corresponding to the definition of set N_i(r)')
     parser.add_argument('--lamda', type=float, default=1, metavar='N', help='Weight to the adversarial loss')
     parser.add_argument('--reg', type=float, default=0, metavar='N', help='weight reg')
     parser.add_argument('--eval', type=int, default=0, metavar='N', help='whether to load a saved model and evaluate (0/1)')

@@ -6,6 +6,7 @@ import torch.optim as optim
 import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.metrics import roc_auc_score
+from tqdm import tqdm
 
 def cal_precision_recall(positive_scores, far_neg_scores, close_neg_scores, fpr):
     """
@@ -34,7 +35,7 @@ def normalize_grads(grad):
     grad_norm = torch.sum(torch.abs(grad), dim=1)
     grad_norm = torch.unsqueeze(grad_norm, dim = 1)
     grad_norm = grad_norm.repeat(1, grad.shape[1])
-    grad = grad/grad_norm * grad.shape[1]
+    grad = grad/(grad_norm + 1e-10)* grad.shape[1]
     return grad
 
 def compute_mahalanobis_distance(grad, diff, radius, device, gamma):
@@ -252,7 +253,9 @@ class DROCCLFTrainer:
             epoch_ce_loss = 0  #Cross entropy Loss
             
             batch_idx = -1
-            for data, target, _ in train_loader:
+
+            pbar = tqdm(train_loader, desc=f'Epoch {epoch+1}/{total_epochs}',leave=False)
+            for data, target, _ in pbar:
                 batch_idx += 1
                 data, target = data.to(self.device), target.to(self.device)
                 # Data Processing
@@ -288,6 +291,13 @@ class DROCCLFTrainer:
                 # Backprop
                 loss.backward()
                 self.optimizer.step()
+
+                current_ce = (epoch_ce_loss / (batch_idx + 1)).item()
+                if epoch >= only_ce_epochs:
+                    current_adv = (epoch_adv_loss / (batch_idx + 1)).item()
+                    pbar.set_postfix({'CE': f'{current_ce:.4f}', 'Adv': f'{current_adv:.4f}'})
+                else:
+                    pbar.set_postfix({'CE': f'{current_ce:.4f}'})
                     
             epoch_ce_loss = epoch_ce_loss/(batch_idx + 1)  #Average CE Loss
             epoch_adv_loss = epoch_adv_loss/(batch_idx + 1) #Average AdvLoss
@@ -398,7 +408,7 @@ class DROCCLFTrainer:
                 grad = torch.autograd.grad(new_loss, [x_adv_sampled])[0]
                 grad_norm = torch.norm(grad, p=2, dim = tuple(range(1, grad.dim())))
                 grad_norm = grad_norm.view(-1, *[1]*(grad.dim()-1))
-                grad_normalized = grad/grad_norm 
+                grad_normalized = grad/(grad_norm + 1e-10)
             with torch.no_grad():
                 x_adv_sampled.add_(self.ascent_step_size * grad_normalized)
 

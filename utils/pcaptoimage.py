@@ -7,7 +7,7 @@ from scapy.utils import RawPcapReader
 # --- YAPILANDIRMA ---
 IMAGE_SIZE = 10
 MAX_BYTES = IMAGE_SIZE * IMAGE_SIZE # 10x10 = 100 bayt
-MAX_PER_CLASS = 1_000_000 # Her sınıf için maksimum üretilecek görsel sayısı
+MAX_PER_CLASS = 250000 # Her sınıf için maksimum üretilecek görsel sayısı (İhtiyaca göre 500000 yapabilirsiniz)
 
 # Kaynak (Input) Dosya ve Klasörleri
 TRAIN_PCAP = "datasets/ciciomt/Normal/Normal.pcap"
@@ -15,9 +15,9 @@ TEST_NORMAL_PCAP = "datasets/ciciomt/Normal/Benigntest.pcap"
 TEST_ATTACK_DIR = "datasets/ciciomt/Malicious/"
 
 # Hedef (Output) Klasörleri
-OUT_TRAIN_DIR = "cicpcapimages/train/"
-OUT_TEST_NORMAL_DIR = "cicpcapimages/test/normal/"
-OUT_TEST_ATTACK_DIR = "cicpcapimages/test/attack/"
+OUT_TRAIN_DIR = "cicpcapimages250k/train/"
+OUT_TEST_NORMAL_DIR = "cicpcapimages250k/test/normal/"
+OUT_TEST_ATTACK_DIR = "cicpcapimages250k/test/attack/"
 
 def setup_directories():
     """Hedef klasörleri oluşturur."""
@@ -28,7 +28,7 @@ def setup_directories():
 
 def packet_to_image(packet_bytes, save_path):
     """
-    Makaledeki yönteme göre ham baytları 10x10 PNG görsele çevirir.
+    Ham baytları 10x10 PNG görsele çevirir.
     """
     byte_list = list(packet_bytes)
     
@@ -45,76 +45,88 @@ def packet_to_image(packet_bytes, save_path):
     img = Image.fromarray(img_array, mode='L')
     img.save(save_path)
 
-def process_pcap(pcap_path, output_dir, prefix="pkt", current_count=0, max_limit=MAX_PER_CLASS):
+def process_pcap(pcap_path, output_dir, prefix="pkt", global_count=0, file_limit=MAX_PER_CLASS):
     """
-    Verilen PCAP dosyasını okur ve belirlenen limite ulaşana kadar paketleri PNG olarak kaydeder.
-    Kaldığı sayacı (current_count) geri döndürür.
+    Verilen PCAP dosyasını okur ve SADECE bu dosya için belirlenen limite (file_limit) 
+    ulaşana kadar paketleri PNG olarak kaydeder.
+    Genel sayacı (global_count) geri döndürür.
     """
     if not os.path.exists(pcap_path):
         print(f"HATA: Dosya bulunamadı -> {pcap_path}")
-        return current_count
+        return global_count
 
-    print(f"İşleniyor: {pcap_path} -> {output_dir}")
+    print(f"İşleniyor: {pcap_path}")
+    print(f" -> Bu dosya için hedef kota: {file_limit} paket")
     
-    count = current_count
+    file_count = 0 # Sadece bu dosyanın içinden okunan paket sayısı
+    
     try:
         with RawPcapReader(pcap_path) as pcap_reader:
             for pkt_data, pkt_metadata in pcap_reader:
-                # Maksimum sınıra ulaşıldıysa işlemi durdur
-                if count >= max_limit:
-                    print(f"  >>> Maksimum sınır ({max_limit}) ulaşıldı! PCAP okuması durduruluyor.")
+                # BU DOSYA İÇİN belirlenen kotaya ulaşıldıysa durdur
+                if file_count >= file_limit:
+                    print(f"  >>> Bu dosya için belirlenen limite ({file_limit}) ulaşıldı. Diğer dosyaya geçiliyor.")
                     break
                 
-                # Dosya ismi formatı (Örn: train_normal_0000001.png)
-                filename = f"{prefix}_{count:07d}.png"
+                # Dosya ismi formatı (global_count kullanarak isimlendiriyoruz ki isimler çakışmasın)
+                filename = f"{prefix}_{global_count:07d}.png"
                 save_path = os.path.join(output_dir, filename)
                 
                 packet_to_image(pkt_data, save_path)
-                count += 1
+                file_count += 1
+                global_count += 1
                 
                 # İlerleme durumunu göster
-                if count % 50000 == 0:
-                    print(f"  {count} / {max_limit} paket işlendi...")
+                if file_count % 50000 == 0:
+                    print(f"  {file_count} / {file_limit} paket işlendi...")
                     
-        print(f"Bu dosyadan sonra toplam işlenen: {count}\n")
+        print(f"Bu dosyadan toplam çıkarılan: {file_count} (Genel Toplam: {global_count})\n")
     except Exception as e:
         print(f"HATA: {pcap_path} okunurken sorun oluştu: {e}")
         
-    return count
+    return global_count
 
 def main():
     print("--- PCAP to Image Dönüşüm İşlemi Başlıyor ---\n")
     setup_directories()
     
-    # 1. Eğitim verisi (Normal) - Max 1 Milyon
-    process_pcap(TRAIN_PCAP, OUT_TRAIN_DIR, prefix="train_normal", current_count=0, max_limit=MAX_PER_CLASS)
+    # 1. Eğitim verisi (Normal)
+    print("\n--- 1. Eğitim Verileri (Normal) Çıkarılıyor ---")
+    process_pcap(TRAIN_PCAP, OUT_TRAIN_DIR, prefix="train_normal", global_count=0, file_limit=MAX_PER_CLASS)
     
-    # 2. Test verisi (Normal) - Max 1 Milyon
-    process_pcap(TEST_NORMAL_PCAP, OUT_TEST_NORMAL_DIR, prefix="test_normal", current_count=0, max_limit=MAX_PER_CLASS)
+    # 2. Test verisi (Normal)
+    print("\n--- 2. Test Verileri (Normal) Çıkarılıyor ---")
+    process_pcap(TEST_NORMAL_PCAP, OUT_TEST_NORMAL_DIR, prefix="test_normal", global_count=0, file_limit=MAX_PER_CLASS)
     
-    # 3. Test verisi (Saldırı) - Tüm dosyalar toplamında Max 1 Milyon
+    # 3. Test verisi (Saldırı) - EŞİT DAĞILIMLI
+    print("\n--- 3. Test Verileri (Attack) Çıkarılıyor ---")
     attack_count = 0
     if os.path.exists(TEST_ATTACK_DIR):
         attack_pcaps = glob.glob(os.path.join(TEST_ATTACK_DIR, "*.pcap"))
+        
         if not attack_pcaps:
             print(f"UYARI: {TEST_ATTACK_DIR} klasöründe hiç .pcap dosyası bulunamadı.")
+        else:
+            num_attack_files = len(attack_pcaps)
+            per_file_limit = MAX_PER_CLASS // num_attack_files
+            remainder = MAX_PER_CLASS % num_attack_files
             
-        for pcap_file in attack_pcaps:
-            # Eğer önceki dosyalarda zaten 1 milyona ulaştıysak döngüyü kır
-            if attack_count >= MAX_PER_CLASS:
-                print("Saldırı (Attack) sınıfı için genel limite ulaşıldı. Diğer pcap dosyaları atlanıyor.")
-                break
+            print(f"Toplam {num_attack_files} adet farklı Attack PCAP dosyası bulundu.")
+            print(f"Genel limit ({MAX_PER_CLASS}), dosyalara eşit bölüştürülüyor: Dosya başı ortalama {per_file_limit} paket.\n")
+            
+            for i, pcap_file in enumerate(attack_pcaps):
+                base_name = os.path.splitext(os.path.basename(pcap_file))[0]
                 
-            base_name = os.path.splitext(os.path.basename(pcap_file))[0]
-            
-            # Kaldığı sayacı gönderip, yeni sayacı geri alıyoruz (toplam count takibi için)
-            attack_count = process_pcap(
-                pcap_path=pcap_file, 
-                output_dir=OUT_TEST_ATTACK_DIR, 
-                prefix=f"attack_{base_name}", 
-                current_count=attack_count, 
-                max_limit=MAX_PER_CLASS
-            )
+                # Tam sayıya bölünememe durumu varsa (Örn: 10000 limit / 3 dosya), artığı son dosyaya ekle
+                current_file_limit = per_file_limit + (remainder if i == num_attack_files - 1 else 0)
+                
+                attack_count = process_pcap(
+                    pcap_path=pcap_file, 
+                    output_dir=OUT_TEST_ATTACK_DIR, 
+                    prefix=f"attack_{base_name}", 
+                    global_count=attack_count, 
+                    file_limit=current_file_limit
+                )
     else:
         print(f"HATA: Saldırı klasörü bulunamadı -> {TEST_ATTACK_DIR}")
 

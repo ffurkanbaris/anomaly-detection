@@ -41,6 +41,10 @@ wheels/
 
 # Generated images
 pcap_images/
+wustlehms_images/
+wustlehms_images_onehot/
+preprocessed_data/
+metrics/
 # Model checkpoints
 *.pth
 *.pt
