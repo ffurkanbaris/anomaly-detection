@@ -70,14 +70,14 @@ graph TD
     B --> C{Pipeline Selection}
     
     %% Vector Pipeline
-    C -- 1. Tabular / MLP --D[Raw 1D Feature Vectors]
+    C -->|1. Tabular / MLP| D[Raw 1D Feature Vectors]
     D --> E[main-drocclf.py]
     E --> F[MLP DROCCModel]
     
     %% Image Pipeline
-    C -- 2. Image / CNN --> G{Feature Dimension}
-    G -- 36 Features --> H[6x6 Grayscale PNGs]
-    G -- 45 Features --> I[7x7 Grayscale PNGs - 4px Padding]
+    C -->|2. Image / CNN| G{Feature Dimension}
+    G -->|36 Features| H[6x6 Grayscale PNGs]
+    G -->|45 Features| I[7x7 Grayscale PNGs - 4px Padding]
     H --> J[drocclf.py / deepsvdd_baseline.py]
     I --> J
     J --> K[CNN DROCCModel / Deep SVDD]
