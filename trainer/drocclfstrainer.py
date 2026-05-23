@@ -7,13 +7,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from sklearn.metrics import roc_auc_score
 from tqdm import tqdm
-    #close neg scores parametresini kaldırdık
-def cal_precision_recall(positive_scores, far_neg_scores, fpr):
+
+def cal_precision_recall(positive_scores, far_neg_scores, close_neg_scores, fpr):
     """
     Computes the precision and recall for the given false positive rate.
     """
     #combine the far and close negative scores
-    all_neg_scores = far_neg_scores
+    all_neg_scores = np.concatenate((far_neg_scores, close_neg_scores), axis = 0)
     num_neg = all_neg_scores.shape[0]
     idx = int((1-fpr) * num_neg)
     #sort scores in ascending order
@@ -100,33 +100,15 @@ def range_lamda_lower(grad):
     #Gridsearch range for lamda
     lam, _ = torch.max(grad, dim=1)
     eps, _ = torch.min(grad, dim=1)
-    # DÜZELTME 1: Sıfıra bölmeyi engellemek için paydaya 1e-10 ekledik
-    lam = -1 / (lam + 1e-10) + eps*0.0001
-    # DÜZELTME 2: Alt sınırın kesinlikle 0'ın altında kalmasını garanti altına alıyoruz (Overflow engeller)
-    return torch.clamp(lam, max=-1e-5)
-"""
-def range_lamda_lower(grad):
-    #Gridsearch range for lamda
-    lam, _ = torch.max(grad, dim=1)
-    eps, _ = torch.min(grad, dim=1)
     lam = -1 / lam + eps*0.0001
     return lam
-"""
+
 def range_nu_upper(grad, mhlnbs_dis, radius, gamma):
-    #Gridsearch range for nu
-    # DÜZELTME 1: Paydalara 1e-10 ekleyerek sıfıra bölmeyi engelliyoruz
-    alpha = (gamma*radius) / (mhlnbs_dis + 1e-10)
-    max_sigma, _ = torch.max(grad, dim=1)
-    nu = (alpha / (1 - alpha + 1e-10)) * max_sigma
-    # DÜZELTME 2: Üst sınırın kesinlikle 0'dan büyük olmasını garanti ediyoruz
-    return torch.clamp(nu, min=1e-5)
-"""def range_nu_upper(grad, mhlnbs_dis, radius, gamma):
     #Gridsearch range for nu
     alpha = (gamma*radius)/mhlnbs_dis
     max_sigma, _ = torch.max(grad, dim=1)
     nu = (alpha/(1-alpha))*max_sigma
     return nu
-    """
 
 def optim_solver(grad, diff, radius, device, gamma=2):
     """
@@ -227,7 +209,7 @@ class DROCCLFTrainer:
         self.gamma = gamma
         self.device = device
 
-    def train(self, train_loader, val_loader, learning_rate, lr_scheduler, total_epochs, closeneg_val_loader = None, 
+    def train(self, train_loader, val_loader, closeneg_val_loader, learning_rate, lr_scheduler, total_epochs, 
                 only_ce_epochs=50, ascent_step_size=0.001, ascent_num_steps=50):
         """Trains the model on the given training dataset with periodic 
         evaluation on the validation dataset.
@@ -322,10 +304,10 @@ class DROCCLFTrainer:
 
             #normal val loader has the positive data and the far negative data
             auc, pos_scores, far_neg_scores  = self.test(val_loader, get_auc=True)
-            #_, _, close_neg_scores  = self.test(closeneg_val_loader, get_auc=False)
-            #close neg scores parametresini kaldırdık
-            precision_fpr03 , recall_fpr03 = cal_precision_recall(pos_scores, far_neg_scores, 0.03)
-            precision_fpr05 , recall_fpr05 = cal_precision_recall(pos_scores, far_neg_scores, 0.05)
+            _, _, close_neg_scores  = self.test(closeneg_val_loader, get_auc=False)
+            
+            precision_fpr03 , recall_fpr03 = cal_precision_recall(pos_scores, far_neg_scores, close_neg_scores, 0.03)
+            precision_fpr05 , recall_fpr05 = cal_precision_recall(pos_scores, far_neg_scores, close_neg_scores, 0.05)
             
             history['ce_loss'].append(epoch_ce_loss.item())
             history['adv_loss'].append(epoch_adv_loss.item())
