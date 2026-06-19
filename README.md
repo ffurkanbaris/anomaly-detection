@@ -64,6 +64,25 @@ pip install torch torchvision numpy pandas matplotlib scikit-learn pillow tqdm
 
 The repository supports two independent training pipelines depending on the model architecture and data format.
 
+```mermaid
+graph TD
+    A[Raw CSV Data] --> B(Preprocessing & Normalization: 0-255)
+    B --> C{Pipeline Selection}
+    
+    %% Vector Pipeline
+    C -->|1. Tabular / MLP| D[Raw 1D Feature Vectors]
+    D --> E[mlp-drocc.py]
+    E --> F[MLP DROCCModel]
+    
+    %% Image Pipeline
+    C -->|2. Image / CNN| G{Feature Dimension}
+    G -->|36 Features| H[6x6 Grayscale PNGs]
+    G -->|45 Features| I[7x7 Grayscale PNGs - 4px Padding]
+    H --> J[cnn-drocclf.py / deepsvdd_baseline.py]
+    I --> J
+    J --> K[CNN DROCCModel / Deep SVDD]
+```
+
 ### 1. Tabular Vector Pipeline (MLP Model)
 This pipeline feeds the 1D preprocessed features directly into a Multi-Layer Perceptron (MLP) model.
 *   **Target Script:** `mlp-drocc.py`
@@ -153,15 +172,17 @@ python deepsvdd_baseline.py --eval 1 --img_size 6 --model_dir svdd_log
 DROCC (Deep Robust One-Class Classification) approaches the one-class classification problem by synthetically generating negative points around the normal training points.
 
 1.  **Adversarial Sample Generation (Gradient Ascent):**
-    Starting from a normal training sample $x$ perturbed with small random noise, the algorithm performs gradient ascent to maximize the classification loss:
-    $$\theta_{adv} \leftarrow \theta_{adv} + \eta \cdot \text{sign}(\nabla_x \mathcal{L}_{CE})$$
+    Starting from a normal training sample `x` perturbed with small random noise, the algorithm performs gradient ascent to maximize the classification loss:
+    
+    $$ \theta_{adv} \leftarrow \theta_{adv} + \eta \cdot \text{sign}(\nabla_x \mathcal{L}_{CE}) $$
 
 2.  **Mahalanobis Projection & Optimization:**
-    To keep the generated samples within a reasonable distance to the normal data, they are projected to lie between the spheres of radius $r$ and $\gamma \cdot r$. The `optim_solver` in `trainer/drocclftrainer.py` handles this constrained optimization problem.
+    To keep the generated samples within a reasonable distance to the normal data, they are projected to lie between the spheres of radius `r` and `\gamma \cdot r`. The `optim_solver` in `trainer/drocclftrainer.py` handles this constrained optimization problem.
 
 3.  **Loss Function:**
-    The network is trained to classify normal points as class $1$ and synthetic adversarial points as class $0$:
-    $$\mathcal{L}_{Total} = \mathcal{L}_{CE}(f(x), 1) + \lambda \cdot \mathcal{L}_{CE}(f(x_{adv}), 0)$$
+    The network is trained to classify normal points as class `1` and synthetic adversarial points as class `0`:
+    
+    $$ \mathcal{L}_{Total} = \mathcal{L}_{CE}(f(x), 1) + \lambda \cdot \mathcal{L}_{CE}(f(x_{adv}), 0) $$
 
 ---
 
