@@ -17,53 +17,35 @@ from sklearn.metrics import (
 )
 from trainer.drocclfstrainer import DROCCLFTrainer, cal_precision_recall
 
-# ---------------------------------------------------------
-# 1. MODEL MİMARİSİ (6x6 Görüntü Boyutuna Göre)
-# ---------------------------------------------------------
 class DROCCModel(nn.Module):
     def __init__(self):
         super().__init__()
 
         self.rep_dim = 128 
         
-        # 1. Blok: 6x6 -> 3x3 (Havuzlama sonrası)
-        # 3x3 filtre küçük görüntüler için daha hassas özellik yakalar
         self.conv1 = nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(16, eps=1e-04, affine=False)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2) # Boyutu yarıya indirir
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        # 2. Blok: 3x3 -> 3x3 (Havuzlama kaldırıldı!)
-        # Bilgiyi korumak için burada tekrar küçültme yapmıyoruz
         self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(32, eps=1e-04, affine=False)
         
-        # Flatten sonrası boyut hesaplama: 
-        # 32 kanal * 3 (yükseklik) * 3 (genişlik) = 288 birim
         self.fc1 = nn.Linear(32 * 3 * 3, self.rep_dim, bias=False)
         
-        # DROCC'un sınıflandırma katmanı
         self.fc2 = nn.Linear(self.rep_dim, 1, bias=False)
 
     def forward(self, x):
-        # Girişi 6x6 formatına zorla (36 öznitelik)
         x = x.view(x.shape[0], 1, 6, 6)
         
-        # İlk evrişim ve havuzlama: 1x6x6 -> 16x3x3
         x = self.pool(F.leaky_relu(self.bn1(self.conv1(x))))
         
-        # İkinci evrişim: 16x3x3 -> 32x3x3 (Havuzlama yok, bilgi korundu)
         x = F.leaky_relu(self.bn2(self.conv2(x)))
         
-        # Temsil katmanına geçiş: 288 -> 128
         x = x.view(x.size(0), -1)
         x = self.fc1(x)
         
-        # Nihai anomali skoru (Logit)
         return self.fc2(x)
 
-# ---------------------------------------------------------
-# 2. ÖZEL VERİSETİ SINIFI
-# ---------------------------------------------------------
 class CustomImageDataset(Dataset):
     def __init__(self, normal_dir=None, attack_dir=None, transform=None):
         self.transform = transform
@@ -104,9 +86,6 @@ class TensorDatasetWrapper(Dataset):
     def __getitem__(self, idx):
         return self.data[idx], self.labels[idx], torch.tensor([0])
 
-# ---------------------------------------------------------
-# 3. YARDIMCI VE ÇİZİM FONKSİYONLARI
-# ---------------------------------------------------------
 def adjust_learning_rate(epoch, total_epochs, only_ce_epochs, learning_rate, optimizer):
     epoch = epoch - only_ce_epochs
     drocc_epochs = total_epochs - only_ce_epochs
@@ -147,28 +126,22 @@ def get_close_negs(test_loader, device):
     
     return TensorDatasetWrapper(close_neg_data, close_neg_labels)
 
-
 def calculate_and_print_all_metrics(pos_scores, far_neg_scores, close_neg_scores, fpr_threshold=0.05):
     
     all_neg_scores = np.concatenate((far_neg_scores, close_neg_scores), axis=0)
     
-    # Gerçek Etiketler (Normal = 1, Attack = 0) ve Skorları Birleştirme
     y_true = np.concatenate([np.ones_like(pos_scores), np.zeros_like(all_neg_scores)])
     y_scores = np.concatenate([pos_scores, all_neg_scores])
     
-    # 1. Eşikten Bağımsız Metrik: ROC-AUC Hesaplama
     auc_score = roc_auc_score(y_true, y_scores)
     
-    # 2. Threshold Belirleme (Hedeflenen FPR'ye göre eşik noktası kesimi)
     num_neg = all_neg_scores.shape[0]
     idx = int((1 - fpr_threshold) * num_neg)
     sorted_neg = np.sort(all_neg_scores)
     thresh = sorted_neg[idx] if num_neg > 0 else 0.5
     
-    # Eşiğe Göre Sınıflandırma Kararı (Eşikten büyükse 1, küçükse 0)
     y_pred = (y_scores > thresh).astype(int)
     
-    # Diğer Metrikler
     acc = accuracy_score(y_true, y_pred)
     prec = precision_score(y_true, y_pred, zero_division=0)
     rec = recall_score(y_true, y_pred, zero_division=0)
@@ -191,7 +164,6 @@ def calculate_and_print_all_metrics(pos_scores, far_neg_scores, close_neg_scores
     print("="*50 + "\n")
 
 def plot_training_metrics(history, save_dir):
-    """Eğitim sonu loss ve metrik grafiklerini çizer."""
     epochs = range(1, len(history['ce_loss']) + 1)
     plt.figure(figsize=(14, 5))
     
@@ -220,12 +192,10 @@ def plot_training_metrics(history, save_dir):
     print(f"\n[Başarılı] Eğitim grafikleri kaydedildi: {save_path}")
 
 def plot_evaluation_results(pos_scores, far_neg_scores, close_neg_scores, save_dir, fpr_threshold=0.05):
-    """Test veri seti üzerindeki Skor Dağılımını ve Confusion Matrix'i çizer."""
     all_neg_scores = np.concatenate((far_neg_scores, close_neg_scores), axis=0)
     
     plt.figure(figsize=(14, 5))
     
-    # 1. Skor Dağılımı Histogramı (Score Distribution)
     plt.subplot(1, 2, 1)
     plt.hist(pos_scores, bins=50, alpha=0.6, label='Normal Veriler (Pos)', color='green', density=True)
     plt.hist(all_neg_scores, bins=50, alpha=0.6, label='Attack/Neg Veriler', color='red', density=True)
@@ -235,18 +205,14 @@ def plot_evaluation_results(pos_scores, far_neg_scores, close_neg_scores, save_d
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.5)
 
-    # Eşik Değerini (Threshold) Belirleme (FPR = %5 'e göre)
     num_neg = all_neg_scores.shape[0]
     idx = int((1 - fpr_threshold) * num_neg)
     sorted_neg = np.sort(all_neg_scores)
     thresh = sorted_neg[idx] if num_neg > 0 else 0.5
     
-    # Threshold çizgisi çizdirme
     plt.axvline(x=thresh, color='black', linestyle='dashed', linewidth=2, label=f'Threshold (@FPR {fpr_threshold*100}%)')
     plt.legend()
 
-    # 2. Karmaşıklık Matrisi (Confusion Matrix)
-    # Tahminler: Eşikten büyükse Normal (1), küçükse Attack (0)
     y_true = np.concatenate([np.ones_like(pos_scores), np.zeros_like(all_neg_scores)])
     y_pred = np.concatenate([(pos_scores > thresh).astype(int), (all_neg_scores > thresh).astype(int)])
     
@@ -261,7 +227,6 @@ def plot_evaluation_results(pos_scores, far_neg_scores, close_neg_scores, save_d
     plt.xticks(tick_marks, ['Attack (0)', 'Normal (1)'])
     plt.yticks(tick_marks, ['Attack (0)', 'Normal (1)'])
     
-    # Kutuların içine sayıları yazdırma
     thresh_cm = cm.max() / 2.
     for i in range(cm.shape[0]):
         for j in range(cm.shape[1]):
@@ -279,9 +244,6 @@ def plot_evaluation_results(pos_scores, far_neg_scores, close_neg_scores, save_d
     plt.close()
     print(f"[Başarılı] Test Değerlendirme Çıktıları (Dağılım & CM) kaydedildi: {save_path}")
 
-# ---------------------------------------------------------
-# 4. ANA DÖNGÜ (MAIN)
-# ---------------------------------------------------------
 def main():
     transform = transforms.Compose([
         transforms.Resize((6, 6)),
@@ -320,10 +282,8 @@ def main():
         trainer.save(args.model_dir)
         print("Eğitim tamamlandı ve model kaydedildi.")
         
-        # Eğitim grafikleri
         plot_training_metrics(history, args.model_dir)
         
-        # Test Seti üzerinden Skor Dağılımı ve CM grafikleri (Eğitim sonrası)
         print("\nTest seti üzerinde değerlendirme ve Skor Dağılımı yapılıyor...")
         _, pos_scores, far_neg_scores = trainer.test(test_loader, get_auc=False)
         _, _, close_neg_scores = trainer.test(closeneg_test_loader, get_auc=False)
@@ -350,14 +310,9 @@ def main():
         print('Test Precision @ FPR 3% : {}, Recall @ FPR 3%: {}'.format(precision_fpr03, recall_fpr03))
         print('Test Precision @ FPR 5% : {}, Recall @ FPR 5%: {}'.format(precision_fpr05, recall_fpr05))
 
-        # Test Seti üzerinden Skor Dağılımı ve CM grafikleri (Sadece Değerlendirme modunda)
         plot_evaluation_results(pos_scores, far_neg_scores, close_neg_scores, args.model_dir, fpr_threshold=0.05)
 
 if __name__ == '__main__':
-    """"wustlehms_images --> r = 0.1
-        wustlehms_images_onehot --> r = 0.1
-    
-    """
     torch.set_printoptions(precision=5)
     parser = argparse.ArgumentParser(description='PyTorch DROCC Training with Custom PNG Data')
     parser.add_argument('--normal_class', type=int, default=0, metavar='N', help='Normal class index')
@@ -380,7 +335,6 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--data_path', type=str, default='.')
     args = parser.parse_args()
 
-    # Settings
     model_dir = args.model_dir
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)

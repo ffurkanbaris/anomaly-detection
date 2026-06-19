@@ -1,24 +1,3 @@
-"""
-deepsvdd_baseline.py
-====================
-DROCC-LF ile kıyaslama için Deep SVDD (Deep Support Vector Data Description).
-Makale Protokolü: Yalnızca ROC-AUC skoru baz alınarak değerlendirme yapılır.
-
-Algoritma:
-  1. [Opsiyonel] Autoencoder ön-eğitimi (başlangıç ağırlıkları için)
-  2. Merkez c hesaplama: tüm normal eğitim örneklerinin encoder çıktısının ortalaması
-  3. SVDD Eğitimi: normal örneklerin c'ye uzaklığını minimize et
-  4. Anomali skoru: c'ye uzaklık (yüksek = anormal, bu yüzden negasyonu alınır)
-
-Desteklenen görüntü boyutları: 6x6 (wustlehms_images) veya 7x7 (network_traffic_7x7_images)
-CNN mimarisi: drocclf.py ile aynı katman yapısı
-
-Kullanım:
-  python deepsvdd_baseline.py --img_size 6 --epochs 50
-  python deepsvdd_baseline.py --img_size 7 --epochs 50 --data_path .
-  python deepsvdd_baseline.py --eval 1 --model_dir svdd_log
-"""
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -37,21 +16,11 @@ import os
 import glob
 from sklearn.metrics import roc_auc_score, roc_curve
 
-
-# =============================================================
-# 1. MİMARİ
-# =============================================================
 def _flat_dim(img_size: int) -> int:
-    """MaxPool(2,2) sonrası düzleştirilmiş boyutu hesapla."""
-    h = img_size // 2   # 6->3, 7->3
-    return 32 * h * h   # her ikisi için 288
-
+    h = img_size // 2
+    return 32 * h * h
 
 class SVDDEncoder(nn.Module):
-    """
-    drocclf.py DROCCModel ile özdeş evrişim gövdesi.
-    Bias YOK — SVDD hiperküre çökmesini önlemek için zorunlu.
-    """
     def __init__(self, img_size: int = 6, rep_dim: int = 128):
         super().__init__()
         self.img_size = img_size
@@ -72,11 +41,9 @@ class SVDDEncoder(nn.Module):
         x = self.pool(F.leaky_relu(self.bn1(self.conv1(x))))
         x = F.leaky_relu(self.bn2(self.conv2(x)))
         x = x.view(x.size(0), -1)
-        return self.fc1(x)   # temsil vektörü
-
+        return self.fc1(x)
 
 class SVDDDecoder(nn.Module):
-    """Ön-eğitim için hafif decoder (ConvTranspose2d)."""
     def __init__(self, img_size: int = 6, rep_dim: int = 128):
         super().__init__()
         self.img_size = img_size
@@ -87,8 +54,7 @@ class SVDDDecoder(nn.Module):
         self.fc_d  = nn.Linear(rep_dim, flat, bias=False)
         self.deconv1 = nn.ConvTranspose2d(32, 16, 3, stride=1, padding=1, bias=False)
         self.bn_d1   = nn.BatchNorm2d(16, eps=1e-4, affine=False)
-        # h -> img_size (6->6 veya 3->7 için output_padding ayarı)
-        op = img_size - h * 2   # 6->0, 7->1
+        op = img_size - h * 2
         self.deconv2 = nn.ConvTranspose2d(16, 1, 2, stride=2, padding=0,
                                            output_padding=op, bias=False)
 
@@ -97,7 +63,6 @@ class SVDDDecoder(nn.Module):
         x = x.view(x.size(0), 32, self.h, self.h)
         x = F.leaky_relu(self.bn_d1(self.deconv1(x)))
         return torch.sigmoid(self.deconv2(x))
-
 
 class SVDDAutoencoder(nn.Module):
     def __init__(self, img_size: int = 6, rep_dim: int = 128):
@@ -108,10 +73,6 @@ class SVDDAutoencoder(nn.Module):
     def forward(self, x):
         return self.decoder(self.encoder(x))
 
-
-# =============================================================
-# 2. VERİSETİ
-# =============================================================
 class CustomImageDataset(Dataset):
     def __init__(self, normal_dir=None, attack_dir=None, transform=None):
         self.transform = transform
@@ -138,13 +99,8 @@ class CustomImageDataset(Dataset):
             img = self.transform(img)
         return img, torch.tensor(label, dtype=torch.float32)
 
-
-# =============================================================
-# 3. MERKEZİ HESAPLA
-# =============================================================
 @torch.no_grad()
 def init_center(encoder, loader, device, eps=0.1):
-    """Tüm normal eğitim verilerinin encoder çıktısının ortalaması = c."""
     encoder.eval()
     all_z = []
     for imgs, labels in loader:
@@ -157,15 +113,10 @@ def init_center(encoder, loader, device, eps=0.1):
         all_z.append(z)
     c = torch.cat(all_z, dim=0).mean(dim=0)
     
-    # Sıfıra çok yakın bileşenleri işaretini koruyarak sabitle
     c[(torch.abs(c) < eps) & (c < 0)] = -eps
     c[(torch.abs(c) < eps) & (c >= 0)] = eps
     return c
 
-
-# =============================================================
-# 4. ÖN-EĞİTİM (Autoencoder)
-# =============================================================
 def pretrain(ae, loader, optimizer, device, epochs):
     ae.train()
     print(f"\n[Ön-Eğitim] Autoencoder {epochs} epoch eğitiliyor...")
@@ -180,7 +131,6 @@ def pretrain(ae, loader, optimizer, device, epochs):
             optimizer.zero_grad()
             recon = ae(imgs)
             
-            # Orijinal sum over pixels + mean over batch mantığı
             recon_errors = torch.sum((recon - imgs) ** 2, dim=tuple(range(1, recon.dim())))
             loss = torch.mean(recon_errors)
             
@@ -192,10 +142,6 @@ def pretrain(ae, loader, optimizer, device, epochs):
             print(f"  Ön-Eğitim Epoch [{ep:3d}/{epochs}]  Recon Loss: {total/max(n,1):.5f}")
     print("[Ön-Eğitim] Tamamlandı.\n")
 
-
-# =============================================================
-# 5. SVDD EĞİTİMİ
-# =============================================================
 def train_svdd_epoch(encoder, center, loader, optimizer, device):
     encoder.train()
     total, n = 0.0, 0
@@ -215,30 +161,19 @@ def train_svdd_epoch(encoder, center, loader, optimizer, device):
         n     += imgs.size(0)
     return total / max(n, 1)
 
-
-# =============================================================
-# 6. DEĞERLENDİRME
-# =============================================================
 @torch.no_grad()
 def evaluate(encoder, center, loader, device):
-    """
-    Anomali skoru = -uzaklık (yüksek = normal, drocclf.py ile tutarlı).
-    """
     encoder.eval()
     all_scores, all_labels = [], []
     for imgs, labels in loader:
         imgs = imgs.to(device, dtype=torch.float32)
         z    = encoder(imgs)
         dist = torch.sum((z - center) ** 2, dim=1)
-        score = -dist.cpu().numpy()   # negasyon: yüksek = normal
+        score = -dist.cpu().numpy()
         all_scores.append(score)
         all_labels.append(labels.numpy())
     return np.concatenate(all_scores), np.concatenate(all_labels)
 
-
-# =============================================================
-# 7. METRİKLER (Yalnızca AUC)
-# =============================================================
 def compute_metrics(scores, labels):
     auc = roc_auc_score(labels, scores)
 
@@ -250,10 +185,6 @@ def compute_metrics(scores, labels):
 
     return dict(auc=auc)
 
-
-# =============================================================
-# 8. GRAFİKLER (Dağılım & ROC Eğrisi)
-# =============================================================
 def plot_training(history, save_dir):
     epochs = range(1, len(history["loss"]) + 1)
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
@@ -273,7 +204,6 @@ def plot_training(history, save_dir):
     plt.tight_layout(); plt.savefig(path, dpi=150); plt.close()
     print(f"[Başarılı] Eğitim grafikleri kaydedildi: {path}")
 
-
 def plot_evaluation(scores, labels, save_dir):
     pos_scores = scores[labels == 1]
     neg_scores = scores[labels == 0]
@@ -281,7 +211,6 @@ def plot_evaluation(scores, labels, save_dir):
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
-    # Altgrafik 1: Sabit çizgi içermeyen Saf Skor Dağılımı
     axes[0].hist(pos_scores, bins=50, alpha=0.6, color="green", density=True, label="Normal (1)")
     axes[0].hist(neg_scores, bins=50, alpha=0.6, color="red",   density=True, label="Attack (0)")
     axes[0].set_title("Deep SVDD – Skor Dağılımı")
@@ -289,7 +218,6 @@ def plot_evaluation(scores, labels, save_dir):
     axes[0].set_ylabel("Yoğunluk")
     axes[0].legend(); axes[0].grid(True, linestyle="--", alpha=0.5)
 
-    # Altgrafik 2: Akademik Standart ROC Eğrisi
     fpr, tpr, _ = roc_curve(labels, scores, pos_label=1)
     axes[1].plot(fpr, tpr, color="darkorange", lw=2, label=f"ROC Curve (AUC = {auc:.4f})")
     axes[1].plot([0, 1], [0, 1], color="navy", lw=2, linestyle="--")
@@ -305,12 +233,7 @@ def plot_evaluation(scores, labels, save_dir):
     plt.tight_layout(); plt.savefig(path, dpi=150); plt.close()
     print(f"[Başarılı] Değerlendirme grafikleri (Dağılım & ROC) kaydedildi: {path}")
 
-
-# =============================================================
-# 9. MAIN
-# =============================================================
 def get_data_dirs(args):
-    """img_size'a göre doğru veri dizinini seç."""
     if args.img_size == 7:
         root = os.path.join(args.data_path, "network_traffic_7x7_images")
     else:
@@ -321,7 +244,6 @@ def get_data_dirs(args):
         os.path.join(root, "test",  "normal"),
         os.path.join(root, "test",  "attack"),
     )
-
 
 def main(args, device):
     sz = args.img_size
@@ -352,7 +274,6 @@ def main(args, device):
     center_path = os.path.join(args.model_dir, "svdd_center.pt")
     model_path  = os.path.join(args.model_dir, "svdd_encoder.pt")
 
-    # ---- Sadece değerlendirme ----
     if args.eval == 1:
         if not os.path.exists(model_path) or not os.path.exists(center_path):
             print("[Hata] Kayıtlı model veya merkez bulunamadı.")
@@ -365,7 +286,6 @@ def main(args, device):
         plot_evaluation(scores, labels, args.model_dir)
         return
 
-    # ---- Ön-eğitim (Autoencoder) ----
     if args.pretrain_epochs > 0:
         ae      = SVDDAutoencoder(img_size=sz, rep_dim=args.rep_dim).to(device)
         opt_ae  = optim.Adam(ae.parameters(), lr=args.lr, weight_decay=1e-6)
@@ -373,12 +293,10 @@ def main(args, device):
         encoder.load_state_dict(ae.encoder.state_dict())
         del ae
 
-    # ---- Merkez hesapla ----
     print("[Bilgi] Hiperküre merkezi hesaplanıyor...")
     center = init_center(encoder, train_loader, device)
     print(f"[Bilgi] Merkez norm: {center.norm().item():.4f}")
 
-    # ---- SVDD Eğitimi ----
     optimizer = optim.Adam(encoder.parameters(), lr=args.lr, weight_decay=1e-6)
     scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
@@ -412,17 +330,12 @@ def main(args, device):
 
     plot_training(history, args.model_dir)
 
-    # Son değerlendirme (en iyi ağırlıklar)
     encoder.load_state_dict(torch.load(model_path, map_location=device))
     center = torch.load(center_path, map_location=device)
     scores, labels = evaluate(encoder, center, test_loader, device)
     compute_metrics(scores, labels)
     plot_evaluation(scores, labels, args.model_dir)
 
-
-# =============================================================
-# 10. GİRİŞ NOKTASI
-# =============================================================
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Deep SVDD – DROCC-LF ile kıyaslama için one-class anomali tespiti"

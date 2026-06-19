@@ -20,14 +20,11 @@ from sklearn.model_selection import train_test_split
 
 from trainer.drocclftrainer import DROCCLFTrainer, cal_precision_recall
 
-# ---------------------------------------------------------
-# 1. MODEL MİMARİSİ (6x6 Görüntü Boyutuna Göre)
-# ---------------------------------------------------------
 class DROCCModel(nn.Module):
 
     def __init__(self, input_dim=45):
         super().__init__()
-        self.rep_dim = 128  # 36'dan 128'e yükseltildi
+        self.rep_dim = 128
         self.fc1 = nn.Linear(input_dim, self.rep_dim, bias=False)
         self.bn1 = nn.BatchNorm1d(self.rep_dim, eps=1e-04, affine=False)
         self.fc2 = nn.Linear(self.rep_dim, 1, bias=False)
@@ -37,69 +34,12 @@ class DROCCModel(nn.Module):
         x = F.leaky_relu(self.bn1(x)) 
         x = self.fc2(x)
         return x
-    """def __init__(self):
-        super().__init__()
 
-        # Makale standartlarına uygun 128 boyutlu temsil alanı 
-        self.rep_dim = 128 
-        
-        # 1. Blok: 7x7 -> 3x3 (Havuzlama sonrası)
-        self.conv1 = nn.Conv2d(1, 16, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(16, eps=1e-04, affine=False)
-        self.pool = nn.MaxPool2d(2, 2)
-        
-        # 2. Blok: 3x3 -> 3x3 (Havuzlama kaldırıldı, bilgi korundu)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(32, eps=1e-04, affine=False)
-        
-        # Flatten sonrası boyut: 32 kanal * 3 * 3 = 288 birim
-        self.fc1 = nn.Linear(32 * 3 * 3, self.rep_dim, bias=False)
-        self.fc2 = nn.Linear(self.rep_dim, 1, bias=False)
-
-    def forward(self, x):
-        # Giriş verisini 7x7 gri tonlamalı olarak ayarla
-        x = x.view(x.shape[0], 1, 7, 7)
-        
-        # İlk katman ve havuzlama (Boyut: 16x3x3)
-        x = self.pool(F.leaky_relu(self.bn1(self.conv1(x))))
-        
-        # İkinci katman (Boyut: 32x3x3) - Havuzlama yok!
-        x = F.leaky_relu(self.bn2(self.conv2(x)))
-        
-        # Temsil katmanına geçiş (288 -> 128)
-        x = x.view(x.size(0), -1)
-        x = self.fc1(x)
-        
-        # Nihai sınıflandırma skoru
-        logits = self.fc2(x)
-        return logits"""
-
-# ---------------------------------------------------------
-# 2. ÖZEL VERİSETİ SINIFI
-# ---------------------------------------------------------
-"""
-class CustomVectorDataset(Dataset):
-    def __init__(self, data_array, label_array):
-        self.data = data_array
-        self.labels = label_array
-        self.input_dim = self.data.shape[1]
-
-    def __len__(self):
-        return len(self.data)
-
-    def __getitem__(self, idx):
-        vector = self.data[idx]
-        # Tensöre çevir ve 0-1 aralığına sıkıştır (CSV'de 0-255 olduğu varsayımıyla)
-        tensor_data = torch.tensor(vector, dtype=torch.float32) / 255.0
-        label = self.labels[idx]
-        return tensor_data, label, torch.tensor([0])
-"""
 class CustomVectorDataset(Dataset):
     def __init__(self, csv_file, label_value):
         print(f"Yükleniyor: {csv_file}")
         df = pd.read_csv(csv_file)
         
-        # 'Label' veya 'DataType' gibi özellik olmayan sütunları düşür
         feature_columns = [c for c in df.columns if c not in ['Label', 'DataType']]
         self.data = df[feature_columns].values
         self.labels = [label_value] * len(self.data)
@@ -110,9 +50,7 @@ class CustomVectorDataset(Dataset):
         return len(self.data)
 
     def __getitem__(self, idx):
-        # Ham özellikleri al
         vector = self.data[idx]
-        # Tensöre çevir ve 0-1 aralığına sıkıştır (eğer CSV'de 0-255 ise)
         tensor_data = torch.tensor(vector, dtype=torch.float32) / 255.0
         label = self.labels[idx]
         return tensor_data, label, torch.tensor([0])
@@ -127,50 +65,6 @@ class TensorDatasetWrapper(Dataset):
     
     def __getitem__(self, idx):
         return self.data[idx], self.labels[idx], torch.tensor([0])
-"""
-class CustomImageDataset(Dataset):
-    def __init__(self, normal_dir=None, attack_dir=None, transform=None):
-        self.transform = transform
-        self.filepaths = []
-        self.labels = []
-        
-        if normal_dir and os.path.exists(normal_dir):
-            normal_files = glob.glob(os.path.join(normal_dir, "*.png"))
-            self.filepaths.extend(normal_files)
-            self.labels.extend([1] * len(normal_files))
-            
-        if attack_dir and os.path.exists(attack_dir):
-            attack_files = glob.glob(os.path.join(attack_dir, "*.png"))
-            self.filepaths.extend(attack_files)
-            self.labels.extend([0] * len(attack_files))
-
-    def __len__(self):
-        return len(self.filepaths)
-
-    def __getitem__(self, idx):
-        img_path = self.filepaths[idx]
-        image = Image.open(img_path).convert('L')
-        label = self.labels[idx]
-        
-        if self.transform:
-            image = self.transform(image)
-            
-        return image, label, torch.tensor([0])
-
-class TensorDatasetWrapper(Dataset):
-    def __init__(self, data, labels):
-        self.data = data
-        self.labels = labels
-        
-    def __len__(self):
-        return len(self.data)
-    
-    def __getitem__(self, idx):
-        return self.data[idx], self.labels[idx], torch.tensor([0])
-"""
-# ---------------------------------------------------------
-# 3. YARDIMCI VE ÇİZİM FONKSİYONLARI
-# ---------------------------------------------------------
 def adjust_learning_rate(epoch, total_epochs, only_ce_epochs, learning_rate, optimizer):
     epoch = epoch - only_ce_epochs
     drocc_epochs = total_epochs - only_ce_epochs
@@ -183,56 +77,23 @@ def adjust_learning_rate(epoch, total_epochs, only_ce_epochs, learning_rate, opt
     for param_group in optimizer.param_groups:
         param_group['lr'] = lr
     return optimizer
-"""
-def get_close_negs(test_loader, device):
-    batch_idx = -1
-    close_neg_data = None
-    for data, target, _ in test_loader:
-        batch_idx += 1
-        data, target = data.to(device), target.to(device)
-        data = data.to(torch.float)
-        target = target.to(torch.float)
-        
-        data_0 = data[target == 1]
-        if data_0.size(0) == 0: continue
-            
-        aug1 = data_0.clone()
-        indices = np.random.choice(np.arange(torch.numel(aug1)), replace=False,
-                                   size=int(torch.numel(aug1) * 0.4))
-        aug1[np.unravel_index(indices, np.shape(aug1))] = torch.min(data)
-        
-        if close_neg_data is None:
-            close_neg_data = aug1
-        else:
-            close_neg_data = torch.cat((close_neg_data, aug1), dim=0)
-
-    close_neg_data = close_neg_data.detach().cpu()
-    close_neg_labels = torch.zeros(close_neg_data.shape[0])
-    
-    return TensorDatasetWrapper(close_neg_data, close_neg_labels)
-"""
 
 def calculate_and_print_all_metrics(pos_scores, far_neg_scores, fpr_threshold=0.05):
     
     all_neg_scores = np.asanyarray(far_neg_scores)
     
-    # Gerçek Etiketler (Normal = 1, Attack = 0) ve Skorları Birleştirme
     y_true = np.concatenate([np.ones_like(pos_scores), np.zeros_like(all_neg_scores)])
     y_scores = np.concatenate([pos_scores, all_neg_scores])
     
-    # 1. Eşikten Bağımsız Metrik: ROC-AUC Hesaplama
     auc_score = roc_auc_score(y_true, y_scores)
     
-    # 2. Threshold Belirleme (Hedeflenen FPR'ye göre eşik noktası kesimi)
     num_neg = all_neg_scores.shape[0]
     idx = int((1 - fpr_threshold) * num_neg)
     sorted_neg = np.sort(all_neg_scores)
     thresh = sorted_neg[idx] if num_neg > 0 else 0.5
     
-    # Eşiğe Göre Sınıflandırma Kararı (Eşikten büyükse 1, küçükse 0)
     y_pred = (y_scores > thresh).astype(int)
     
-    # Diğer Metrikler
     acc = accuracy_score(y_true, y_pred)
     prec = precision_score(y_true, y_pred, zero_division=0)
     rec = recall_score(y_true, y_pred, zero_division=0)
@@ -255,7 +116,6 @@ def calculate_and_print_all_metrics(pos_scores, far_neg_scores, fpr_threshold=0.
     print("="*50 + "\n")
 
 def plot_training_metrics(history, save_dir):
-    """Eğitim sonu loss ve metrik grafiklerini çizer."""
     epochs = range(1, len(history['ce_loss']) + 1)
     plt.figure(figsize=(14, 5))
     
@@ -284,25 +144,21 @@ def plot_training_metrics(history, save_dir):
     print(f"\n[Başarılı] Eğitim grafikleri kaydedildi: {save_path}")
 
 def plot_evaluation_results(pos_scores, far_neg_scores, save_dir, fpr_threshold=0.05):
-    """Test veri seti üzerindeki skor dağılımını ve FPR/Youden CM'lerini çizer."""
     all_neg_scores = far_neg_scores
     y_true = np.concatenate([np.ones_like(pos_scores), np.zeros_like(all_neg_scores)])
     y_scores = np.concatenate([pos_scores, all_neg_scores])
 
     plt.figure(figsize=(21, 5))
 
-    # 1) FPR tabanlı eşik (hedef FPR)
     num_neg = all_neg_scores.shape[0]
     idx = int((1 - fpr_threshold) * num_neg)
     sorted_neg = np.sort(all_neg_scores)
     fpr_thresh = sorted_neg[idx] if num_neg > 0 else 0.5
 
-    # 2) Youden J tabanlı eşik
     roc_fpr, roc_tpr, roc_thresholds = roc_curve(y_true, y_scores, pos_label=1)
     youden_idx = np.argmax(roc_tpr - roc_fpr)
     youden_thresh = roc_thresholds[youden_idx]
 
-    # 1. Skor Dağılımı Histogramı (Score Distribution)
     plt.subplot(1, 3, 1)
     plt.hist(pos_scores, bins=50, alpha=0.6, label='Normal Veriler (Pos)', color='green', density=True)
     plt.hist(all_neg_scores, bins=50, alpha=0.6, label='Attack/Neg Veriler', color='red', density=True)
@@ -326,7 +182,6 @@ def plot_evaluation_results(pos_scores, far_neg_scores, save_dir, fpr_threshold=
     plt.legend()
     plt.grid(True, linestyle='--', alpha=0.5)
 
-    # 2. FPR tabanlı Karmaşıklık Matrisi
     y_pred_fpr = (y_scores > fpr_thresh).astype(int)
     cm_fpr = confusion_matrix(y_true, y_pred_fpr, labels=[0, 1])
 
@@ -350,7 +205,6 @@ def plot_evaluation_results(pos_scores, far_neg_scores, save_dir, fpr_threshold=
     plt.ylabel('Gerçek Etiketler (True Label)')
     plt.xlabel('Tahmin Edilen Etiketler (Predicted Label)')
 
-    # 3. Youden J tabanlı Karmaşıklık Matrisi
     y_pred_youden = (y_scores > youden_thresh).astype(int)
     cm_youden = confusion_matrix(y_true, y_pred_youden, labels=[0, 1])
 
@@ -379,81 +233,21 @@ def plot_evaluation_results(pos_scores, far_neg_scores, save_dir, fpr_threshold=
     plt.close()
     print(f"[Başarılı] Test Değerlendirme Çıktıları (Dağılım & CM) kaydedildi: {save_path}")
 
-# ---------------------------------------------------------
-# 4. ANA DÖNGÜ (MAIN)
-# ---------------------------------------------------------
 def main():
     
     train_normal_csv = "preprocessed_data/train_normal_scaled.csv"
     test_normal_csv = "preprocessed_data/test_normal_scaled.csv"
     test_attack_csv = "preprocessed_data/test_attack_scaled.csv"
 
-    # 2. Verileri okuyun (Normal=1, Attack=0)
     train_dataset = CustomVectorDataset(csv_file=train_normal_csv, label_value=1)
     
     test_normal_dataset = CustomVectorDataset(csv_file=test_normal_csv, label_value=1)
     test_attack_dataset = CustomVectorDataset(csv_file=test_attack_csv, label_value=0)
     test_dataset = torch.utils.data.ConcatDataset([test_normal_dataset, test_attack_dataset])
 
-    # 3. Loader'ları oluşturun
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
     
-    """
-    csv_file = "preprocessed_data/onehot_preprocessed_wustlehms_modified_columns.csv"
-    print(f"Veri Seti Yükleniyor: {csv_file}")
-    
-    if not os.path.exists(csv_file):
-        print(f"HATA: Dosya bulunamadı -> {csv_file}")
-        return
-
-    df = pd.read_csv(csv_file)
-    
-    # 'Attack Category' vb. olası etiket sütunlarını bul
-    if 'Attack Category' in df.columns:
-        label_col = 'Attack Category'
-    elif 'Label' in df.columns:
-        label_col = 'Label'
-    else:
-        raise ValueError("Label sütunu bulunamadı. Beklenen: 'Attack Category' veya 'Label'.")
-
-
-    features_df = df.drop(columns=[label_col]).apply(pd.to_numeric, errors='coerce').fillna(0.0)
-    features = features_df.to_numpy(dtype=np.float32)
-# Label normalize et (normal=1, attack=0)
-    labels_str = df[label_col].astype(str).str.strip().str.lower()
-    binary_labels = np.ones(len(labels_str), dtype=np.int64)
-    binary_labels[labels_str.isin(['attack', 'malicious', 'anomaly', '1'])] = 0
-    
-    # Normal ve Attack verileri ayır
-    normal_mask = binary_labels == 1
-    attack_mask = ~normal_mask
-    
-    normal_features = features[normal_mask]
-    attack_features = features[attack_mask]
-    
-    print(f"\nToplam Normal Veri : {len(normal_features)}")
-    print(f"Toplam Saldırı Veri: {len(attack_features)}")
-    
-    # Normal verileri %80 Train, %20 Test olarak böl
-    X_train_norm, X_test_norm = train_test_split(normal_features, test_size=0.20, random_state=42)
-    
-    print(f"\nVeri Seti Bölündü:")
-    print(f" -> TRAIN (Sadece Normal): {len(X_train_norm)}")
-    print(f" -> TEST  (Normal)       : {len(X_test_norm)}")
-    print(f" -> TEST  (Saldırı)      : {len(attack_features)}")
-    
-    # Test setini birleştir (Normal + Attack)
-    X_test_all = np.vstack((X_test_norm, attack_features))
-    y_test_all = np.concatenate((np.ones(len(X_test_norm)), np.zeros(len(attack_features))))
-
-    # 2. PyTorch Dataset ve DataLoader Oluşturma
-    train_dataset = CustomVectorDataset(X_train_norm, np.ones(len(X_train_norm)))
-    test_dataset = CustomVectorDataset(X_test_all, y_test_all)
-
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
-"""
     model = DROCCModel(input_dim=train_dataset.input_dim).to(device)
     model = nn.DataParallel(model)
 
@@ -468,19 +262,15 @@ def main():
 
     if args.eval == 0:
         print("Eğitim başlatılıyor...")
-        # closeneg_test_loader parametresini kaldırdık
         history = trainer.train(train_loader, test_loader, args.lr, adjust_learning_rate, args.epochs,
                       ascent_step_size=args.ascent_step_size, only_ce_epochs=args.only_ce_epochs)
         trainer.save(args.model_dir)
         print("Eğitim tamamlandı ve model kaydedildi.")
         
-        # Eğitim grafikleri
         plot_training_metrics(history, args.model_dir)
         
-        # Test Seti üzerinden Skor Dağılımı ve CM grafikleri (Eğitim sonrası)
         print("\nTest seti üzerinde değerlendirme ve Skor Dağılımı yapılıyor...")
         _, pos_scores, far_neg_scores = trainer.test(test_loader, get_auc=False)
-        #_, _, close_neg_scores = trainer.test(closeneg_test_loader, get_auc=False)
 
         calculate_and_print_all_metrics(pos_scores, far_neg_scores,  fpr_threshold=0.05)
         plot_evaluation_results(pos_scores, far_neg_scores, args.model_dir, fpr_threshold=0.05)
@@ -494,7 +284,6 @@ def main():
             exit()
             
         _, pos_scores, far_neg_scores = trainer.test(test_loader, get_auc=False)
-        #_, _, close_neg_scores = trainer.test(closeneg_test_loader, get_auc=False)
 
         calculate_and_print_all_metrics(pos_scores, far_neg_scores, fpr_threshold=0.05)
         
@@ -504,15 +293,9 @@ def main():
         print('Test Precision @ FPR 3% : {}, Recall @ FPR 3%: {}'.format(precision_fpr03, recall_fpr03))
         print('Test Precision @ FPR 5% : {}, Recall @ FPR 5%: {}'.format(precision_fpr05, recall_fpr05))
 
-        # Test Seti üzerinden Skor Dağılımı ve CM grafikleri (Sadece Değerlendirme modunda)
         plot_evaluation_results(pos_scores, far_neg_scores, args.model_dir, fpr_threshold=0.05)
 
 if __name__ == '__main__':
-    """"
-    wustlehms_images --> r = 0.1
-    wustlehms_images_onehot --> r = 0.1
-    ciccsv --> r = 0.05
-    """
     torch.set_printoptions(precision=5)
     parser = argparse.ArgumentParser(description='PyTorch DROCC Training with Custom PNG Data')
     parser.add_argument('--normal_class', type=int, default=0, metavar='N', help='Normal class index')
@@ -535,7 +318,6 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--data_path', type=str, default='.')
     args = parser.parse_args()
 
-    # Settings
     model_dir = args.model_dir
     if not os.path.exists(model_dir):
         os.makedirs(model_dir)
